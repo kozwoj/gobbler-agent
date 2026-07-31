@@ -1,14 +1,33 @@
 package docker
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"time"
+)
+
+// Docker Engine API connection settings.
+// The daemon is configured to listen on localhost only (see docker-REST.md) —
+// no TLS/auth is needed because the traffic never leaves the host.
+const (
+	baseURL        = "http://127.0.0.1:2375"
+	gobblerImage   = "gobbler:latest"
+	requestTimeout = 5 * time.Second
+
+	// gobblerContainerPort is the port the Gobbler image listens on inside the container (see Dockerfile).
+	gobblerContainerPort = 8080
 )
 
 // Sentinel errors returned by Docker methods.
 var (
-	ErrNotFound      = errors.New("instance not found")
-	ErrAlreadyExists = errors.New("instance already exists")
+	ErrNotFound          = errors.New("instance not found")
+	ErrAlreadyExists     = errors.New("instance already exists")
+	ErrDaemonUnreachable = errors.New("docker daemon unreachable")
+	ErrImageNotFound     = errors.New("gobbler image not found")
+	ErrHostNotPrepared   = errors.New("/gobbler directory not found on host; see host preparation steps in README.md")
 )
 
 // DaemonStatus is a projection of selected fields from Docker's GET /info response.
@@ -39,10 +58,14 @@ endpoints. It uses REST Docker Engine APIs to manage Gobbler containers
 */
 
 type Docker struct {
-	starTime string // time when the Docker wrapper was created
+	client    *http.Client
+	baseURL   string // base URL for Docker Engine API
+	startTime string // time when the Docker wrapper was created
 }
 
-/* New creates a new Docker wrapper instance. At minimum it
+/*
+	New creates a new Docker wrapper instance. At minimum it
+
 - verifies that the Docker daemon is running and is accessible on port 2375 (or 2376 for TLS)
 - verifies that the Gobbler image is available
 
@@ -50,55 +73,61 @@ Note: we are assuming that part of the host configuration is to start
 Docker daemon and pull the Gobbler image.
 */
 func New() (*Docker, error) {
-	// TODO: check if Docker daemon is running and Gobbler image is available
-	return &Docker{
-		starTime: time.Now().Format(time.RFC3339),
-	}, nil
+	c := &Docker{
+		client:    &http.Client{Timeout: requestTimeout},
+		baseURL:   baseURL,
+		startTime: time.Now().Format(time.RFC3339),
+	}
+
+	if err := c.checkDaemon(); err != nil {
+		return nil, err
+	}
+	if err := c.checkImage(); err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
-/* CreateServer creates, starts and configures a new Gobbler container. It
-- verifies that no container with instanceName is already running (returns ErrAlreadyExists if so)
-- if mode == file, verifies that outputDir follows the host path convention /gobbler/<instanceName>
-- creates the container (POST /containers/create) with instanceName, -v bindings (file mode) and -p hostPort:8080
-- starts the container (POST /containers/{id}/start)
-- polls GET /gobbler/pipeline/status until the container responds
-- configures the container (POST /gobbler/pipeline/configure) with the full config payload
-- returns the populated InstanceRecord for the new instance
-*/
-func (c *Docker) CreateServer(config []byte, hostPort int) (InstanceRecord, error) {
-	// TODO: implement the logic to create, start and configure a new Gobbler container
-	return InstanceRecord{}, nil
-}
+// checkDaemon verifies that the Docker daemon is reachable by calling GET /info.
+func (c *Docker) checkDaemon() error {
+	resp, err := c.client.Get(c.baseURL + "/info")
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDaemonUnreachable, err)
+	}
+	defer resp.Body.Close()
 
-/* ListServers lists all, or selected, Gobbler container(s) running on the host
-- if name is provided filters the list to include only the container with the given name
-- if name is empty, returns the list of all Gobbler containers
-- for each container returns
-	- container name
-	- host port assigned to the container (9000 + NumOfServers)
-*/
-func (c *Docker) ListServers(name string) ([]InstanceRecord, error) {
-	// TODO: query GET /containers/json, filter by gobbler label/name, map to InstanceRecord
-	return nil, nil
-}
-
-/* DeleteServer stops and removes a Gobbler container with the given name
-- verifies that a container with the given name exists
-- stops the container (POST /containers/{id}/stop)
-- removes the container (DELETE /containers/{id})
-
-Note: we are assuming that the Agent's endpoint corresponding to deleting the container verifies
-that the server's pipeline has been stopped -- Gobbler is not ingesting any data and all files/blobs have been flushed.
-*/
-func (c *Docker) DeleteServer(name string) error {
-	// TODO: implement the logic to stop and remove a Gobbler container
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: unexpected status %d from /info", ErrDaemonUnreachable, resp.StatusCode)
+	}
 	return nil
 }
 
-/* Status returns selected fields from the Docker daemon's GET /info response.
-- returns ErrNotFound if the Docker daemon is not reachable
-*/
-func (c *Docker) Status() (*DaemonStatus, error) {
-	// TODO: call GET /info on the Docker daemon and map to DaemonStatus
-	return nil, nil
+// checkImage verifies that the Gobbler image has been loaded/pulled on the host
+// by calling GET /images/json filtered to the gobbler:latest reference.
+func (c *Docker) checkImage() error {
+	filters := url.QueryEscape(fmt.Sprintf(`{"reference":["%s"]}`, gobblerImage))
+	resp, err := c.client.Get(fmt.Sprintf("%s/images/json?filters=%s", c.baseURL, filters))
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDaemonUnreachable, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("%w: unexpected status %d from /images/json", ErrDaemonUnreachable, resp.StatusCode)
+	}
+
+	var images []struct {
+		RepoTags []string `json:"RepoTags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&images); err != nil {
+		return fmt.Errorf("decoding /images/json response: %w", err)
+	}
+
+	if len(images) == 0 {
+		return fmt.Errorf("%w: %s (run `docker load` or `docker pull` on the host)", ErrImageNotFound, gobblerImage)
+	}
+	return nil
 }
+
+

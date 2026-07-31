@@ -1,0 +1,181 @@
+# **************************** Gobbler Agent REST manual test ****************************
+#
+# Requires (see README.md "Host preparation" + docker-REST.md):
+#   - Docker daemon reachable at 127.0.0.1:2375
+#   - gobbler:latest image loaded (docker load -i gobbler.tar / docker build
+#   - /gobbler directory already created on the host
+#
+# Start the Agent first:
+#   go build -o gobbler-agent . && 
+#   ./gobbler-agent
+#
+# Agent listens on port 9000 of @agentHost
+# Instances get consecutive ports starting at 9001.
+
+# Change value of @agentHost for remote host!
+@agentHost = localhost
+@agentPort = 9000
+@instanceName = gobbler-manual-test
+
+
+# **************************** Agent status ****************************
+# GET /agent/status -> Docker daemon info (ID, Containers, ContainersRunning, ...)
+###
+GET http://{{agentHost}}:{{agentPort}}/agent/status
+
+
+# **************************** instance lifecycle ****************************
+
+# Create a new Gobbler instance (create + start + configure container).
+# Note the "hostPort" in the response - used below to talk to the instance directly.
+###
+POST http://{{agentHost}}:{{agentPort}}/agent/instance
+Content-Type: application/json
+
+{
+  "instanceName":    "{{instanceName}}",
+  "mode":            "file",
+  "outputDir":       "/gobbler/{{instanceName}}",
+  "writerQueueSize": 100,
+  "writerBatchSize": 10
+}
+
+# Creating the same instance again -> 409 Conflict.
+###
+POST http://{{agentHost}}:{{agentPort}}/agent/instance
+Content-Type: application/json
+
+{
+  "instanceName":    "{{instanceName}}",
+  "mode":            "file",
+  "outputDir":       "/gobbler/{{instanceName}}",
+  "writerQueueSize": 100,
+  "writerBatchSize": 10
+}
+
+# List all instances.
+###
+GET http://{{agentHost}}:{{agentPort}}/agent/instances
+
+# Get the instance we just created.
+###
+GET http://{{agentHost}}:{{agentPort}}/agent/instances/{{instanceName}}
+
+# Get an instance that does not exist -> 404.
+###
+GET http://{{agentHost}}:{{agentPort}}/agent/instances/does-not-exist
+
+# Delete the instance (stops + removes the container).
+###
+DELETE http://{{agentHost}}:{{agentPort}}/agent/instances/{{instanceName}}
+
+# Deleting it again -> 404.
+###
+DELETE http://{{agentHost}}:{{agentPort}}/agent/instances/{{instanceName}}
+
+
+# **************************** validation errors ****************************
+
+# Missing instanceName -> 400
+###
+POST http://{{agentHost}}:{{agentPort}}/agent/instance
+Content-Type: application/json
+
+{
+  "mode":            "file",
+  "outputDir":       "/gobbler/whatever",
+  "writerQueueSize": 100,
+  "writerBatchSize": 10
+}
+
+# Invalid mode -> 400
+###
+POST http://{{agentHost}}:{{agentPort}}/agent/instance
+Content-Type: application/json
+
+{
+  "instanceName":    "{{instanceName}}",
+  "mode":            "bogus",
+  "outputDir":       "/gobbler/{{instanceName}}",
+  "writerQueueSize": 100,
+  "writerBatchSize": 10
+}
+
+# outputDir must equal /gobbler/{instanceName} for file mode -> 400
+###
+POST http://{{agentHost}}:{{agentPort}}/agent/instance
+Content-Type: application/json
+
+{
+  "instanceName":    "{{instanceName}}",
+  "mode":            "file",
+  "outputDir":       "/wrong/path",
+  "writerQueueSize": 100,
+  "writerBatchSize": 10
+}
+
+###
+
+
+# **************************** talking to instance directly ****************************
+# After request 1 (or 4) above, set @instanceHostPort below to the "hostPort" from
+# the response, then use the same endpoints documented in
+# gobbler/tester/docs/gobbler_REST.http to exercise the instance itself
+# (pipeline/status, definition/add, ingest, ...).
+
+@instanceHostPort = 9002
+
+###
+GET http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/status
+
+# Add a type definition
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/definition/add
+Content-Type: application/json
+
+{
+  "name": "vm-reboot",
+  "documentation": "virtual machine reboot event",
+  "folder": "administration",
+  "latencyMinutes": 10,
+  "orderedColumns": [
+    {"name": "vmId",          "type": "string"},
+    {"name": "eventTime",     "type": "datetime"},
+    {"name": "rebootReason",  "type": "string", "defaultValue": "unknown", "optional": false}
+  ]
+}
+
+# Start the pipeline
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/start
+
+# Ingest some data
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/ingest
+Content-Type: application/json
+
+[
+  { "vm-reboot": { "vmId": "vm-001", "eventTime": "2024-01-15 10:00:00.000", "rebootReason": "OS update" } },
+  { "vm-reboot": { "vmId": "vm-002", "eventTime": "2024-01-15 10:01:00.000", "rebootReason": "Hardware fault" } }
+]
+
+# Verify status
+###
+GET http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/status
+
+# Stop the pipeline (triggers final flush — check /tmp/gobbler-output on the host)
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/stop
+
+# Get query tables
+###
+GET http://{{agentHost}}:{{instanceHostPort}}/gobbler/query/tables
+
+# Ask siple query
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/query
+Content-Type: application/json
+
+{
+  "query": "vm-reboot (*) | sort by eventTime desc | take 10"
+}
