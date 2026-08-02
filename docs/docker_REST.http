@@ -6,13 +6,13 @@
 #   - /gobbler directory already created on the host
 #
 # Start the Agent first:
-#   go build -o gobbler-agent . && 
+#   go build -o gobbler-agent . 
 #   ./gobbler-agent
 #
 # Agent listens on port 9000 of @agentHost
 # Instances get consecutive ports starting at 9001.
 
-# Change value of @agentHost for remote host!
+# Change value of @agentHost for testing a remote host!
 @agentHost = localhost
 @agentPort = 9000
 @instanceName = gobbler-manual-test
