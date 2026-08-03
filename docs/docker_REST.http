@@ -13,7 +13,7 @@
 # Instances get consecutive ports starting at 9001.
 
 # Change value of @agentHost for testing a remote host!
-@agentHost = localhost
+@agentHost = 192.168.254.10
 @agentPort = 9000
 @instanceName = gobbler-manual-test
 
@@ -123,7 +123,7 @@ Content-Type: application/json
 # gobbler/tester/docs/gobbler_REST.http to exercise the instance itself
 # (pipeline/status, definition/add, ingest, ...).
 
-@instanceHostPort = 9002
+@instanceHostPort = 9001
 
 ###
 GET http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/status
@@ -136,7 +136,6 @@ Content-Type: application/json
 {
   "name": "vm-reboot",
   "documentation": "virtual machine reboot event",
-  "folder": "administration",
   "latencyMinutes": 10,
   "orderedColumns": [
     {"name": "vmId",          "type": "string"},
@@ -163,7 +162,13 @@ Content-Type: application/json
 ###
 GET http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/status
 
-# Stop the pipeline (triggers final flush — check /tmp/gobbler-output on the host)
+# Rotate flush the selected buffer and closes the current file. 
+###
+POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/rotate
+
+{ "typeName": "vm-reboot" }
+
+# Stop the pipeline - triggers final flush of all buffers and closes all files.
 ###
 POST http://{{agentHost}}:{{instanceHostPort}}/gobbler/pipeline/stop
 

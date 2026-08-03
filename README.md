@@ -114,11 +114,11 @@ docker save -o gobbler.tar gobbler:latest
   ```
 - load the portable gobbler image to Docker 
   ```bash
-  docker load -i gobbler.tar
+  sudo docker load -i gobbler.tar
   ```
 - start the Agent 
   ```bash 
-  nohup ./docker-agent > agent.log 2>&1 &
+  sudo sh -c 'nohup ./docker-agent > agent.log 2>&1 &'
   ```
 
 - stop the Agent 
