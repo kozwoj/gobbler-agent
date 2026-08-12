@@ -46,6 +46,13 @@ type InstanceRecord struct {
 	HostPort     int    `json:"hostPort"`
 	ContainerID  string `json:"containerId"`
 	Status       string `json:"status"`
+	// Config fields — populated for running containers only; zero-value when stopped
+	// or when the Gobbler server inside the container is not yet configured.
+	Mode            string `json:"mode,omitempty"`
+	OutputDir       string `json:"outputDir,omitempty"`
+	AccountName     string `json:"accountName,omitempty"`
+	WriterQueueSize int    `json:"writerQueueSize,omitempty"`
+	WriterBatchSize int    `json:"writerBatchSize,omitempty"`
 }
 
 /* Docker is a wrapper class that implements operations exposed by Agent
@@ -129,5 +136,3 @@ func (c *Docker) checkImage() error {
 	}
 	return nil
 }
-
-

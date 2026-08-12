@@ -54,6 +54,8 @@ Content-Type: application/json
 }
 
 # List all instances.
+# Running instances include pipeline config fields (mode, outputDir, accountName,
+# writerQueueSize, writerBatchSize). Stopped instances omit those fields.
 ###
 GET http://{{agentHost}}:{{agentPort}}/agent/instances
 

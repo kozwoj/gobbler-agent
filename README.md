@@ -118,12 +118,13 @@ docker save -o gobbler.tar gobbler:latest
   ```
 - start the Agent 
   ```bash 
-  sudo sh -c 'nohup ./docker-agent > agent.log 2>&1 &'
+  sudo sh -c 'nohup ./gobbler-agent > agent.log 2>&1 &'
   ```
+If the Agent starts properly the ./gobbler/agent.log file should contain a message: Gobbler Agent starting on port 9000.
 
 - stop the Agent 
   ```bash
-  pkill docker-agent
+  pkill gobbler-agent
   ```
 
 See `gobbler-agent\docs\docker_REST.http` file for examples of how to manually test Gobbler running in a Docker container on a local or remote host. 

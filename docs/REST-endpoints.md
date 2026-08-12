@@ -49,16 +49,35 @@ One command (`POST /agent/instance`) takes JSON object as input (request body). 
 
 **`GET /agent/instances`** 
 
+Returns all Gobbler containers (running and stopped). For running containers, the response also includes the pipeline configuration fields fetched from the container's `GET /gobbler/pipeline/status` endpoint. Config fields are omitted when the container is stopped or when the Gobbler server inside has not yet been configured.
+
 **Responses:**
 ```json
 [
-    { "instanceName": "gobbler-west-1", "url": "http://192.168.1.50:9001", "hostPort": 9001, "containerId": "a1b2c3d4e5f6", "status": "running" },
-    { "instanceName": "gobbler-east-1", "url": "http://192.168.1.50:9002", "hostPort": 9002, "containerId": "b2c3d4e5f6a1", "status": "stopped" }
+    {
+        "instanceName": "gobbler-west-1",
+        "url": "http://192.168.1.50:9001",
+        "hostPort": 9001,
+        "containerId": "a1b2c3d4e5f6",
+        "status": "running",
+        "mode": "file",
+        "outputDir": "/gobbler/gobbler-west-1",
+        "accountName": "",
+        "writerQueueSize": 100,
+        "writerBatchSize": 10
+    },
+    {
+        "instanceName": "gobbler-east-1",
+        "url": "http://192.168.1.50:9002",
+        "hostPort": 9002,
+        "containerId": "b2c3d4e5f6a1",
+        "status": "stopped"
+    }
 ]
 ```
 | Status | Body | Condition |
 |---|---|---|
-| 200 | `[{ "instanceName": "gobbler-west-1", "url": "http://192.168.1.50:9001", "hostPort": 9001, "containerId": "a1b2c3d4e5f6", "status": "running" }, ...]` | Server list |
+| 200 | `[{...}, ...]` | Instance list (may be empty) |
 | 500 | `{"error": "..."}` | Internal service error e.g. Docker not reachable |
 
 
